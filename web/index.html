@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRACE — graph-native fraud investigation agent</title>
+<style>
+  :root{
+    --bg:#0b0e14; --bg2:#10141d; --bg3:#161c28; --line:#232b3b; --tx:#dce3f0; --dim:#8a94a8;
+    --acc:#ff8101; --ok:#3ecf8e; --bad:#ff6b6b; --chip:#1d2534;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.45 "SF Mono",ui-monospace,Menlo,Consolas,monospace;background:var(--bg);color:var(--tx);height:100vh;display:flex;flex-direction:column}
+  header{display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--bg2)}
+  .logo{font-size:18px;font-weight:700;letter-spacing:2px}
+  .logo b{color:var(--acc)}
+  .logo span{color:var(--dim);font-size:11px;font-weight:400;letter-spacing:0;margin-left:8px}
+  .badges{display:flex;gap:8px;margin-left:auto}
+  .badge{font-size:11px;padding:3px 9px;border:1px solid var(--line);border-radius:20px;color:var(--dim);background:var(--bg3)}
+  .badge.ok{color:var(--ok);border-color:#1f4635}
+  .badge.warn{color:#ffd166;border-color:#5a4a1f}
+  .badge.err{color:var(--bad);border-color:#5a2727}
+  select{background:var(--bg3);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font:inherit;font-size:12px}
+  main{flex:1;display:grid;grid-template-columns:1.15fr 1fr;min-height:0}
+  .chat-pane{display:flex;flex-direction:column;border-right:1px solid var(--line);min-height:0}
+  #chat{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+  .msg{max-width:92%}
+  .msg .who{font-size:10px;color:var(--dim);margin-bottom:4px;letter-spacing:1px}
+  .msg.user{align-self:flex-end}
+  .msg.user .bubble{background:#20304c;border:1px solid #2c4370;padding:8px 12px;border-radius:10px}
+  .trace{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px;width:100%}
+  .run-head{display:flex;align-items:center;gap:8px;margin:8px 0 6px}
+  .role-chip{font-size:10px;padding:2px 8px;border-radius:4px;letter-spacing:1px;font-weight:700}
+  .role-chip.investigator{background:#3a2a12;color:var(--acc);border:1px solid #6b4a1c}
+  .role-chip.auditor{background:#12303a;color:#4dd0e1;border:1px solid #1f5a6b}
+  .role-chip.consultant{background:#2a1a3a;color:#c39bff;border:1px solid #4a2c6b}
+  .step{border-left:2px solid var(--line);padding:4px 0 4px 10px;margin:6px 0}
+  .thought{color:var(--dim);font-style:italic;font-size:12.5px}
+  .tool{background:var(--bg3);border:1px solid var(--line);border-radius:8px;margin:6px 0;padding:6px 9px;font-size:12px}
+  .tool .tname{font-weight:700;color:var(--acc)}
+  .tool .tpurpose{color:var(--dim);font-size:11px}
+  .tool details{margin-top:4px}
+  .tool summary{cursor:pointer;color:var(--dim);font-size:11px}
+  .tool pre{background:#0a0d13;border:1px solid var(--line);border-radius:6px;padding:8px;font-size:11px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-height:220px}
+  .tool .res-ok{color:var(--ok)} .tool .res-err{color:var(--bad)}
+  .final{margin-top:8px;padding:10px 12px;background:var(--bg3);border:1px solid #2c3a55;border-left:3px solid var(--acc);border-radius:8px;font-size:13px}
+  .final h4{margin:6px 0 4px;color:var(--acc)}
+  .final code{background:#0a0d13;padding:1px 5px;border-radius:4px;font-size:12px}
+  .final ul{margin:4px 0;padding-left:18px}
+  .final li{margin:2px 0}
+  .errline{color:var(--bad);font-size:12px}
+  .quick{display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px 0}
+  .quick button{background:var(--bg3);border:1px solid var(--line);color:var(--dim);font:inherit;font-size:11px;padding:5px 10px;border-radius:16px;cursor:pointer}
+  .quick button:hover{color:var(--tx);border-color:var(--acc)}
+  form{display:flex;gap:8px;padding:12px 16px}
+  input#msg{flex:1;background:var(--bg3);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:10px 12px;font:inherit;font-size:13px}
+  input#msg:focus{outline:none;border-color:var(--acc)}
+  form button{background:var(--acc);color:#14100a;border:none;border-radius:8px;padding:10px 18px;font:inherit;font-weight:700;cursor:pointer}
+  form button:disabled{opacity:.5;cursor:wait}
+  .side-pane{display:flex;flex-direction:column;min-height:0}
+  .tabs{display:flex;border-bottom:1px solid var(--line)}
+  .tabs button{flex:1;background:none;border:none;color:var(--dim);font:inherit;font-size:12px;letter-spacing:1px;padding:10px 0;cursor:pointer;border-bottom:2px solid transparent}
+  .tabs button.active{color:var(--tx);border-bottom-color:var(--acc)}
+  .tab{flex:1;overflow-y:auto;padding:14px;display:none}
+  .tab.active{display:block}
+  .kcard{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+  .kcard h3{margin:0 0 8px;font-size:13px;letter-spacing:1px}
+  .kv{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px dashed #1b2230}
+  .kv:last-child{border:none}
+  .kv span:first-child{color:var(--dim)}
+  .riskbar{height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;margin:6px 0}
+  .riskbar i{display:block;height:100%;background:linear-gradient(90deg,#3ecf8e,#ffd166,#ff6b6b)}
+  .pill{display:inline-block;font-size:10.5px;padding:2px 8px;border-radius:10px;background:var(--chip);border:1px solid var(--line);margin:2px 3px 2px 0;cursor:default}
+  .pill.frozen{border-color:#6b2727;color:var(--bad)}
+  .pill.ok{border-color:#1f4635;color:var(--ok)}
+  .flagitem,.actionitem,.audititem{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0;font-size:12px;cursor:pointer}
+  .flagitem:hover{border-color:var(--acc)}
+  .tag{font-size:10px;color:var(--acc);font-weight:700;letter-spacing:1px}
+  .cite{color:#4dd0e1}
+  #graphwrap{display:flex;flex-direction:column;gap:8px}
+  #gfocus{font-size:12px;color:var(--dim)}
+  #gfocus b{color:var(--tx)}
+  svg#graph{background:var(--bg2);border:1px solid var(--line);border-radius:10px;width:100%}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:10.5px;color:var(--dim)}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}
+  .mem{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin:8px 0;font-size:12px}
+  .mem .mt{font-weight:700}
+  .mem .mc{color:var(--dim);margin-top:3px}
+  .kind{font-size:10px;padding:1px 7px;border-radius:8px;margin-right:6px}
+  .kind.episodic{background:#12303a;color:#4dd0e1}
+  .kind.semantic{background:#3a2a12;color:var(--acc)}
+  .kind.procedural{background:#2a1a3a;color:#c39bff}
+  .empty{color:var(--dim);font-size:12px;font-style:italic}
+  .spin{display:inline-block;width:10px;height:10px;border:2px solid var(--dim);border-top-color:var(--acc);border-radius:50%;animation:sp 1s linear infinite;margin-right:6px;vertical-align:-1px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:#232b3b;border-radius:5px}
+  @media (max-width:980px){main{grid-template-columns:1fr}.side-pane{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><b>TRACE</b><span>tool-reasoning agent · context for AI agents · powered by FalkorDB</span></div>
+  <div class="badges" id="badges"><span class="badge">…</span></div>
+  <select id="user" title="memory is isolated per user (FalkorDB multigraph)">
+    <option value="demo">user: demo</option>
+    <option value="analyst">user: analyst</option>
+    <option value="fraudops">user: fraudops</option>
+  </select>
+</header>
+<main>
+  <section class="chat-pane">
+    <div id="chat"></div>
+    <div class="quick" id="quick"></div>
+    <form id="form">
+      <input id="msg" placeholder="e.g. Investigate account A-1042" autocomplete="off">
+      <button id="send" type="submit">Run agent</button>
+    </form>
+  </section>
+  <aside class="side-pane">
+    <nav class="tabs">
+      <button data-tab="case" class="active">CASE</button>
+      <button data-tab="graph">GRAPH</button>
+      <button data-tab="memory">MEMORY</button>
+    </nav>
+    <div id="tab-case" class="tab active"><div class="empty">Run an investigation — the case file builds here, live, from the shared case graph.</div></div>
+    <div id="tab-graph" class="tab">
+      <div id="graphwrap">
+        <div id="gfocus">Pick a node in the chat/case panels, or load: <b>A-1042</b> · <b>A-1100</b> · <b>D-901</b> · <b>POL-102</b></div>
+        <svg id="graph" viewBox="0 0 560 560" width="100%"></svg>
+        <div class="legend" id="legend"></div>
+      </div>
+    </div>
+    <div id="tab-memory" class="tab"><div class="empty">Memory for this user appears here after an investigation.</div></div>
+  </aside>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const chatEl = $("#chat");
+let busy = false, currentCase = null, toolEls = {};
+
+const COLORS = {Account:"#4da3ff",Merchant:"#3ecf8e",Device:"#ffb454",Ip:"#b18cff",Txn:"#8a94a6",Policy:"#ff6b6b",Runbook:"#4dd0e1",Team:"#90a4ae",Incident:"#ff9e64",Case:"#f06292",Action:"#e574e8",AuditNote:"#ffd166",Memory:"#40c4ff",Node:"#6b7688"};
+const QUICK = [
+  "Investigate account A-1042",
+  "Investigate A-1100 — why are there so many failed transactions?",
+  "Investigate A-1001 (looks normal — verify it)",
+  "What do you remember from previous investigations?",
+  "Which policy applies when 3 accounts share one device?",
+  "What similar incidents happened before, and which policies were applied?",
+];
+$("#quick").innerHTML = QUICK.map(q => `<button type="button" data-q="${q}">${q.length>46?q.slice(0,44)+"…":q}</button>`).join("");
+document.querySelectorAll("#quick button").forEach(b => b.onclick = () => { $("#msg").value = b.dataset.q; $("#form").requestSubmit(); });
+
+function esc(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function md(s){
+  s = esc(s);
+  s = s.replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/`([^`]+)`/g,"<code>$1</code>");
+  const lines = s.split("\n"); let html="", inList=false;
+  for(const ln of lines){
+    if(/^#{1,4}\s/.test(ln)){ if(inList){html+="</ul>";inList=false;} html += `<h4>${ln.replace(/^#{1,4}\s/,"")}</h4>`; }
+    else if(/^-\s/.test(ln)){ if(!inList){html+="<ul>";inList=true;} html += `<li>${ln.slice(2)}</li>`; }
+    else { if(inList){html+="</ul>";inList=false;} if(ln.trim()) html += `<div>${ln}</div>`; }
+  }
+  if(inList) html+="</ul>";
+  return html;
+}
+function user(){ return $("#user").value; }
+
+async function health(){
+  try{
+    const r = await (await fetch("/api/health")).json();
+    const b = [];
+    b.push(`<span class="badge ${r.db.ok?"ok":"err"}">FalkorDB ${r.db.ok?"online":(r.db.error||"offline")}</span>`);
+    b.push(`<span class="badge ${r.llm.mode==="mock"?"warn":"ok"}">LLM ${esc(r.llm.mode)} · ${esc(r.llm.model)}</span>`);
+    $("#badges").innerHTML = b.join("");
+  }catch(e){ $("#badges").innerHTML = `<span class="badge err">API offline</span>`; }
+}
+
+function addUserMsg(text){
+  const d = document.createElement("div"); d.className = "msg user";
+  d.innerHTML = `<div class="who">YOU</div><div class="bubble">${esc(text)}</div>`;
+  chatEl.appendChild(d); chatEl.scrollTop = chatEl.scrollHeight;
+}
+function newTrace(){
+  const d = document.createElement("div"); d.className = "msg agent";
+  d.innerHTML = `<div class="trace"><div class="run-head"><span class="spin"></span><span class="thinking">agent thinking…</span></div></div>`;
+  chatEl.appendChild(d);
+  return d.querySelector(".trace");
+}
+let curRun = null, curRoleChip = null;
+
+function handleEvent(ev){
+  if(ev.type === "meta"){
+    currentCase = ev.case_id || currentCase;
+    curRun = newTrace();
+  }
+  if(ev.type === "role"){
+    const head = curRun.querySelector(".run-head");
+    if(head) head.remove();
+    curRoleChip = document.createElement("div");
+    curRoleChip.className = "run-head";
+    curRoleChip.innerHTML = `<span class="role-chip ${esc(ev.role)}">${esc(ev.role).toUpperCase()}</span>` +
+      (currentCase?`<span class="badge">case ${esc(currentCase)}</span>`:"");
+    curRun.prepend(curRoleChip);
+  }
+  if(ev.type === "thought"){
+    const d = document.createElement("div"); d.className = "step";
+    d.innerHTML = `<div class="thought">${esc(ev.text)}</div>`;
+    curRun.appendChild(d);
+  }
+  if(ev.type === "tool_call"){
+    toolEls[ev.id] = {args: ev.args, name: ev.name};
+    const d = document.createElement("div"); d.className = "tool";
+    const purpose = ev.args && (ev.args.purpose || ev.args.type || "");
+    d.innerHTML = `<div><span class="tname">${esc(ev.name)}</span> ${purpose?`<span class="tpurpose">· ${esc(purpose)}</span>`:""}</div><details><summary>query + result</summary><pre class="targs">${esc(JSON.stringify(ev.args,null,1))}</pre></details>`;
+    curRun.appendChild(d);
+    toolEls[ev.id].el = d;
+  }
+  if(ev.type === "tool_result"){
+    const t = toolEls[ev.id]; if(!t) return;
+    const pre = document.createElement("pre");
+    pre.className = "tres " + (ev.ok ? "res-ok":"res-err");
+    const rows = ev.data && ev.data.rows ? ev.data.rows.slice(0,8) : null;
+    let txt = "";
+    if(rows){ txt += `-- ${rows.length} row(s)\n` + (ev.data.columns ? ev.data.columns.join(" | ") + "\n" : ""); rows.forEach(r=>txt += JSON.stringify(r) + "\n"); }
+    else txt = JSON.stringify(ev.data, null, 1).slice(0, 1200);
+    pre.textContent = txt;
+    t.el.querySelector("details").appendChild(pre);
+    const sum = t.el.querySelector("summary");
+    if(sum) sum.textContent = (ev.ok?"✓ ":"✗ ") + (rows?`${rows.length} row(s)`:"result") + " — click to expand";
+  }
+  if(ev.type === "case_update" && ev.case_id){ refreshCase(ev.case_id); }
+  if(ev.type === "final"){
+    const d = document.createElement("div"); d.className = "final";
+    d.innerHTML = md(ev.text);
+    curRun.appendChild(d);
+    const spin = curRun.querySelector(".spin"); if(spin) spin.remove();
+  }
+  if(ev.type === "error"){
+    const d = document.createElement("div"); d.className = "errline"; d.textContent = "⚠ " + ev.text;
+    curRun.appendChild(d);
+  }
+  if(ev.type === "done"){
+    if(curRun){ const spin = curRun.querySelector(".spin"); if(spin) spin.remove(); }
+    if(currentCase) refreshCase(currentCase);
+    refreshMemory();
+    setBusy(false);
+  }
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function setBusy(b){ busy = b; $("#send").disabled = b; $("#send").textContent = b ? "running…" : "Run agent"; }
+
+async function send(){
+  const text = $("#msg").value.trim();
+  if(!text || busy) return;
+  setBusy(true);
+  $("#msg").value = "";
+  addUserMsg(text);
+  curRun = newTrace();
+  try{
+    const resp = await fetch("/api/chat", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({message:text, user:user()})});
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while(true){
+      const {done, value} = await reader.read();
+      if(done) break;
+      buf += dec.decode(value, {stream:true});
+      let idx;
+      while((idx = buf.indexOf("\n\n")) >= 0){
+        const chunk = buf.slice(0, idx); buf = buf.slice(idx+2);
+        for(const line of chunk.split("\n")){
+          if(line.startsWith("data: ")){ try{ handleEvent(JSON.parse(line.slice(6))); }catch(e){} }
+        }
+      }
+    }
+  }catch(e){
+    handleEvent({type:"error", text:"connection error: " + e});
+    setBusy(false);
+  }
+}
+$("#form").addEventListener("submit", e => { e.preventDefault(); send(); });
+
+/* ---------------- case panel ---------------- */
+async function refreshCase(cid){
+  if(!cid) return;
+  try{
+    const c = await (await fetch("/api/case/" + encodeURIComponent(cid))).json();
+    if(!c.subject && !c.status){ return; }
+    const risk = c.risk_score ?? 0;
+    const statusCls = c.status === "audited" && c.audit_verdict === "approved" ? "ok" : (c.status==="audited"?"":"warn");
+    let h = `<div class="kcard"><h3>CASE ${esc(c.id)} <span class="tag">${esc(c.status||"")}</span></h3>`;
+    h += `<div class="kv"><span>subject</span><span><a style="color:var(--acc);cursor:pointer" onclick="loadGraph('Account','${esc(c.subject)}')">${esc(c.subject)}</a></span></div>`;
+    h += `<div class="kv"><span>risk score</span><b>${risk}/100</b></div><div class="riskbar"><i style="width:${risk}%"></i></div>`;
+    if(c.hypothesis) h += `<div class="kv"><span>hypothesis</span><span style="text-align:right;max-width:70%">${esc(c.hypothesis)}</span></div>`;
+    if(c.summary) h += `<div class="kv"><span>summary</span><span style="text-align:right;max-width:70%">${esc(c.summary)}</span></div>`;
+    if(c.audit_verdict) h += `<div class="kv"><span>audit verdict</span><span class="${c.audit_verdict==="approved"?"ok":""}" style="color:${c.audit_verdict==="approved"?"var(--ok)":"var(--bad)"}">${esc(c.audit_verdict).toUpperCase()}</span></div>`;
+    h += `</div>`;
+    if(c.flags && c.flags.length){
+      h += `<div class="kcard"><h3>FLAGGED ACCOUNTS <span class="tag">${c.flags.length}</span></div>`;
+      h += c.flags.map(f => `<div class="flagitem" onclick="loadGraph('Account','${esc(f.account)}')" title="open in graph"><span class="tag">FLAG</span> <b>${esc(f.account)}</b><div style="color:var(--dim);margin-top:3px">${esc(f.reason)}</div></div>`).join("");
+      h += `</div>`;
+    }
+    if(c.actions && c.actions.length){
+      h += `<div class="kcard"><h3>ACTIONS TAKEN <span class="tag">policy-cited</span></div>`;
+      h += c.actions.map(a => `<div class="actionitem"><span class="tag" style="color:${a.type==="freeze"?"var(--bad)":"var(--acc)"}">${esc(a.type).toUpperCase()}</span> <b>${esc(a.target)}</b><div style="color:var(--dim);margin-top:3px">${esc(a.reason)}</div><div class="cite" style="margin-top:3px">cites: ${a.cited_policy?esc(a.cited_policy):"—"}</div></div>`).join("");
+      h += `</div>`;
+    }
+    if(c.cited && c.cited.length){
+      h += `<div class="kcard"><h3>SOURCED POLICIES</div>` + c.cited.map(p => `<span class="pill" onclick="loadGraph('Policy','${esc(p.code)}')">${esc(p.code)} ${esc(p.name)}</span>`).join("") + `</div>`;
+    }
+    if(c.audit && c.audit.length){
+      h += `<div class="kcard"><h3>AUDIT TRAIL <span class="tag">auditor agent</span></div>`;
+      h += c.audit.map(a => `<div class="audititem"><span class="tag" style="color:#4dd0e1">AUDIT · ${esc(a.verdict).toUpperCase()}</span><div style="margin-top:4px">${esc(a.text)}</div></div>`).join("");
+      h += `</div>`;
+    }
+    $("#tab-case").innerHTML = h;
+  }catch(e){}
+}
+
+/* ---------------- graph panel ---------------- */
+function loadGraph(label, name){
+  document.querySelector(`.tabs button[data-tab=graph]`).click();
+  loadAround(label, name);
+}
+async function loadAround(label, name){
+  $("#gfocus").innerHTML = `loading <b>${esc(label)}:${esc(name)}</b> neighborhood…`;
+  try{
+    const g = await (await fetch(`/api/graph/around/${encodeURIComponent(label)}/${encodeURIComponent(name)}`)).json();
+    if(g.error){ $("#gfocus").textContent = g.error; return; }
+    renderGraph(g);
+    $("#gfocus").innerHTML = `focus: <b>${esc(name)}</b> (${esc(label)}) · ${g.nodes.length} nodes · ${g.edges.length} edges · click a node to zoom`;
+  }catch(e){ $("#gfocus").textContent = "graph load failed: " + e; }
+}
+function renderGraph(g){
+  const svg = $("#graph");
+  const W=560,H=560,cx=W/2,cy=H/2;
+  const depth = {}; const adj = {};
+  g.nodes.forEach(n=>{ depth[n.name]=0; adj[n.name]=[]; });
+  depth[g.center.name]=0;
+  g.edges.forEach(e=>{ adj[e.from]&&adj[e.from].push([e.to,e.rel]); adj[e.to]&&adj[e.to].push([e.from,e.rel]); });
+  const q=[g.center.name];
+  while(q.length){ const cur=q.shift(); (adj[cur]||[]).forEach(([n])=>{ if(depth[n]===undefined||depth[n]>depth[cur]+1){ depth[n]=depth[cur]+1; q.push(n);} }); }
+  const byDepth = {0:[],1:[],2:[]};
+  g.nodes.forEach(n=>{ const d = Math.min(depth[n.name]??2,2); byDepth[d].push(n); });
+  // parent for depth-2: nearest depth-1 neighbor
+  const parent2 = {};
+  g.nodes.filter(n=>byDepth[2].includes(n)).forEach(n=>{
+    (adj[n.name]||[]).forEach(([m])=>{ if(depth[m]===1 && !parent2[n.name]) parent2[n.name]=m; });
+  });
+  const pos = {};
+  byDepth[0].forEach(n=>pos[n.name]=[cx,cy]);
+  byDepth[1].forEach((n,i)=>{ const a = (i/Math.max(1,byDepth[1].length))*2*Math.PI - Math.PI/2; pos[n.name]=[cx+130*Math.cos(a), cy+130*Math.sin(a)]; });
+  byDepth[2].forEach((n,i)=>{
+    const p = parent2[n.name] && byDepth[1].indexOf(byDepth[1].find(x=>x.name===parent2[n.name]));
+    const base = p!==undefined ? (p/Math.max(1,byDepth[1].length))*2*Math.PI - Math.PI/2 : (i/Math.max(1,byDepth[2].length))*2*Math.PI;
+    const a = base + ((i%3)-1)*0.28;
+    pos[n.name]=[cx+225*Math.cos(a), cy+225*Math.sin(a)];
+  });
+  let out = `<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#3a465c"/></marker></defs>`;
+  g.edges.forEach(e=>{
+    const a = pos[e.from], b = pos[e.to]; if(!a||!b) return;
+    out += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#3a465c" stroke-width="1" marker-end="url(#arr)" opacity="0.8"/>`;
+  });
+  if(g.edges.length < 90){
+    g.edges.forEach(e=>{
+      const a = pos[e.from], b = pos[e.to]; if(!a||!b) return;
+      out += `<text x="${(a[0]+b[0])/2}" y="${(a[1]+b[1])/2-2}" font-size="7" fill="#5a6678" text-anchor="middle">${esc(e.rel)}</text>`;
+    });
+  }
+  g.nodes.forEach(n=>{
+    const [x,y] = pos[n.name] || [cx,cy];
+    const c = COLORS[(n.labels&&n.labels[0])||"Node"] || "#6b7688";
+    const isCenter = n.name === g.center.name;
+    out += `<g style="cursor:pointer" onclick="loadGraph('${esc((n.labels&&n.labels[0])||'Account')}','${esc(n.name)}')">
+      <circle cx="${x}" cy="${y}" r="${isCenter?12:8}" fill="${c}" stroke="${isCenter?"#fff":"none"}" stroke-width="${isCenter?2:0}"/>
+      <text x="${x}" y="${y+ (isCenter?24:19)}" font-size="9" fill="#cfd8ea" text-anchor="middle">${esc(n.name)}</text>
+    </g>`;
+  });
+  svg.innerHTML = out;
+  $("#legend").innerHTML = Object.entries(COLORS).filter(([k])=>k!=="Node"&&k!=="AuditNote").map(([k,v])=>`<span><i style="background:${v}"></i>${k}</span>`).join("");
+}
+
+/* ---------------- memory panel ---------------- */
+async function refreshMemory(){
+  try{
+    const r = await (await fetch("/api/memories?user=" + encodeURIComponent(user()))).json();
+    if(!r.memories.length){ $("#tab-memory").innerHTML = `<div class="empty">No memories yet for user <b>${esc(user())}</b>. After an investigation, episodic + semantic memories persist here — per user, in its own FalkorDB graph (<code>mem_${esc(user())}</code>).</div>`; return; }
+    $("#tab-memory").innerHTML = `<div class="kcard"><h3>PERSISTENT MEMORY · user: ${esc(user())} <span class="tag">graph mem_${esc(user())}</span></div>` +
+      r.memories.map(m=>`<div class="mem"><span class="kind ${esc(m.kind)}">${esc(m.kind)}</span><span class="mt">${esc(m.title)}</span><div class="mc">${esc(m.content)}</div><div style="color:#5a6678;font-size:10.5px;margin-top:4px">case: ${esc(m.case||"—")} · conf ${m.confidence}</div></div>`).join("") + `</div>`;
+  }catch(e){}
+}
+
+/* ---------------- tabs & boot ---------------- */
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");
+  $("#tab-" + b.dataset.tab).classList.add("active");
+  if(b.dataset.tab === "memory") refreshMemory();
+});
+function onUserChange(){ refreshMemory(); }
+$("#user").onchange = onUserChange;
+health(); setInterval(health, 15000);
+loadAround("Account","A-1042");
+(function(){ const d=document.createElement("div"); d.className="msg agent"; d.innerHTML=`<div class="trace"><div class="final" style="border-left-color:var(--ok)">## TRACE ready
+FalkorDB holds three isolated graphs: <code>bank</code> (payments + company knowledge), <code>cases</code> (shared state between the investigator &amp; auditor agents), and one <code>mem_user</code> graph per user for persistent memory.
+
+Try: <b>Investigate A-1042</b> (device ring + mule chain) or <b>Investigate A-1100</b> (card testing). Every step streams here with its exact Cypher — that's the explainability.</div></div>`; chatEl.appendChild(d); })();
+</script>
+</body>
+</html>
